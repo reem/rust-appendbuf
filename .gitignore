@@ -1,0 +1,14 @@
+*~
+*#
+*.o
+*.so
+*.swp
+*.dylib
+*.dSYM
+*.dll
+*.rlib
+*.dummy
+*.exe
+/target/
+Cargo.lock
+
