@@ -8,3 +8,6 @@ description = "A Sync append-only buffer with Send views."
 readme = "README.md"
 license = "MIT"
 
+[dependencies]
+memalloc = "0"
+
