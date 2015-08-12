@@ -10,7 +10,7 @@ extern crate memalloc;
 
 use std::sync::atomic::{self, AtomicUsize, Ordering};
 use std::ops::Deref;
-use std::mem;
+use std::{io, mem};
 
 /// An append-only, atomically reference counted buffer.
 pub struct AppendBuf {
@@ -50,7 +50,48 @@ impl AppendBuf {
         }
     }
 
-    fn allocinfo(&self) -> &AllocInfo { unsafe { mem::transmute(self.alloc) } }
+    /// Retrieve the amount of remaining space in the AppendBuf.
+    pub fn remaining(&self) -> usize {
+        self.allocinfo().buf.len() - self.position
+    }
+
+    /// Get the remaining space in the AppendBuf for writing.
+    ///
+    /// If you wish the see the data written in subsequent Slices,
+    /// you must also call `advance` with the amount written.
+    ///
+    /// Reads from this buffer are reads into uninitalized memory,
+    /// and so should be carefully avoided.
+    pub fn get_write_buf(&mut self) -> &mut [u8] {
+         &mut self.allocinfo_mut().buf
+    }
+
+    /// Advance the position of the AppendBuf.
+    ///
+    /// You should only advance the buffer if you have written to a
+    /// buffer returned by `get_write_buf`.
+    pub unsafe fn advance(&mut self, amount: usize) {
+         self.position += amount;
+    }
+
+    fn allocinfo(&self) -> &AllocInfo {
+        unsafe { mem::transmute(self.alloc) }
+    }
+
+    fn allocinfo_mut(&mut self) -> &mut AllocInfo {
+        unsafe { mem::transmute(self.alloc) }
+    }
+}
+
+impl io::Write for AppendBuf {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let amount = try!(self.get_write_buf().write(buf));
+        self.position += amount;
+
+        Ok(amount)
+    }
+
+    fn flush(&mut self) -> io::Result<()> { Ok(()) }
 }
 
 impl Deref for Slice {
@@ -119,5 +160,25 @@ impl Drop for AppendBuf {
     fn drop(&mut self) {
         unsafe { (*self.alloc).decrement() }
     }
+}
+
+#[test]
+fn test_write_and_slice() {
+    use std::io::Write;
+
+    let mut buf = AppendBuf::new(10);
+    assert_eq!(buf.write(&[1, 2, 3]).unwrap(), 3);
+    let slice = buf.slice();
+    assert_eq!(&*slice, &[1, 2, 3]);
+}
+
+#[test]
+fn test_overlong_write() {
+    use std::io::Write;
+
+    let mut buf = AppendBuf::new(5);
+    assert_eq!(buf.write(&[1, 2, 3, 4, 5, 6]).unwrap(), 5);
+    let slice = buf.slice();
+    assert_eq!(&*slice, &[1, 2, 3, 4, 5]);
 }
 
