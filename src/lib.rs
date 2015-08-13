@@ -30,6 +30,53 @@ pub struct Slice {
     len: usize
 }
 
+impl Slice {
+    /// Get a subslice starting from the passed offset.
+    pub fn slice_from(&self, offset: usize) -> Slice {
+        if self.len < self.offset + offset {
+            panic!("Sliced past the end of an appendbuf::Slice,
+                   the length was {:?} and the desired offset was {:?}",
+                   self.len, offset);
+        }
+
+        self.allocinfo().increment();
+
+        Slice {
+            alloc: self.alloc,
+            offset: self.offset + offset,
+            len: self.len - offset
+        }
+    }
+
+    /// Get a subslice of the first len elements.
+    pub fn slice_to(&self, len: usize) -> Slice {
+        if self.len <= len {
+            panic!("Sliced past the end of an appendbuf::Slice,
+                   the length was {:?} and the desired length was {:?}",
+                   self.len, len);
+        }
+
+        self.allocinfo().increment();
+
+        Slice {
+            alloc: self.alloc,
+            offset: self.offset,
+            len: len
+        }
+    }
+
+    /// Get a subslice starting at the passed `start` offset and ending at
+    /// the passed `end` offset.
+    pub fn slice(&self, start: usize, end: usize) -> Slice {
+        let slice = self.slice_from(start);
+        slice.slice_to(end - start)
+    }
+
+    fn allocinfo(&self) -> &AllocInfo {
+        unsafe { mem::transmute(self.alloc) }
+    }
+}
+
 impl AppendBuf {
     /// Create a new, empty AppendBuf with the given capacity.
     pub fn new(len: usize) -> AppendBuf {
@@ -98,7 +145,7 @@ impl Deref for Slice {
     type Target = [u8];
 
     fn deref(&self) -> &[u8] {
-        unsafe { &(*self.alloc).buf[self.offset..self.len] }
+        unsafe { &(*self.alloc).buf[self.offset..self.offset + self.len] }
     }
 }
 
@@ -110,7 +157,7 @@ impl AllocInfo {
     unsafe fn allocate(size: usize) -> *mut Self {
         let alloc = memalloc::allocate(size + std::mem::size_of::<AtomicUsize>());
         let this = mem::transmute::<_, *mut Self>((alloc, size));
-        (*this).refcount = AtomicUsize::new(0);
+        (*this).refcount = AtomicUsize::new(1);
         this
     }
 
@@ -180,5 +227,46 @@ fn test_overlong_write() {
     assert_eq!(buf.write(&[1, 2, 3, 4, 5, 6]).unwrap(), 5);
     let slice = buf.slice();
     assert_eq!(&*slice, &[1, 2, 3, 4, 5]);
+}
+
+#[test]
+fn test_slice_slicing() {
+    use std::io::Write;
+
+    let data = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+    let mut buf = AppendBuf::new(10);
+    assert_eq!(buf.write(data).unwrap(), 10);
+
+    assert_eq!(&*buf.slice(), data);
+    assert_eq!(&*buf.slice().slice_to(5), &data[..5]);
+    assert_eq!(&*buf.slice().slice_from(6), &data[6..]);
+    assert_eq!(&*buf.slice().slice(2, 7), &data[2..7]);
+}
+
+#[test]
+#[should_panic = "the desired offset"]
+fn test_slice_from_bounds_checks() {
+    use std::io::Write;
+
+    let data = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+    let mut buf = AppendBuf::new(10);
+    assert_eq!(buf.write(data).unwrap(), 10);
+
+    buf.slice().slice_from(100);
+}
+
+#[test]
+#[should_panic = "the desired length"]
+fn test_slice_to_bounds_checks() {
+    use std::io::Write;
+
+    let data = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+    let mut buf = AppendBuf::new(10);
+    assert_eq!(buf.write(data).unwrap(), 10);
+
+    buf.slice().slice_to(100);
 }
 
