@@ -102,6 +102,20 @@ impl AppendBuf {
         self.allocinfo().buf.len() - self.position
     }
 
+    /// Write the data in the passed buffer onto the AppendBuf.
+    ///
+    /// This is an alternative to using the implementation of `std::io::Write`
+    /// which does not unnecessarily use `Result`.
+    pub fn fill(&mut self, buf: &[u8]) -> usize {
+        use std::io::Write;
+
+        // FIXME: Use std::slice::bytes::copy_memory when it is stabilized.
+        let amount = self.get_write_buf().write(buf).unwrap();
+        self.position += amount;
+
+        amount
+    }
+
     /// Get the remaining space in the AppendBuf for writing.
     ///
     /// If you wish the see the data written in subsequent Slices,
@@ -110,7 +124,8 @@ impl AppendBuf {
     /// Reads from this buffer are reads into uninitalized memory,
     /// and so should be carefully avoided.
     pub fn get_write_buf(&mut self) -> &mut [u8] {
-         &mut self.allocinfo_mut().buf
+        let position = self.position;
+         &mut self.allocinfo_mut().buf[position..]
     }
 
     /// Advance the position of the AppendBuf.
@@ -132,10 +147,7 @@ impl AppendBuf {
 
 impl io::Write for AppendBuf {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let amount = try!(self.get_write_buf().write(buf));
-        self.position += amount;
-
-        Ok(amount)
+        Ok(self.fill(buf))
     }
 
     fn flush(&mut self) -> io::Result<()> { Ok(()) }
@@ -211,32 +223,26 @@ impl Drop for AppendBuf {
 
 #[test]
 fn test_write_and_slice() {
-    use std::io::Write;
-
     let mut buf = AppendBuf::new(10);
-    assert_eq!(buf.write(&[1, 2, 3]).unwrap(), 3);
+    assert_eq!(buf.fill(&[1, 2, 3]), 3);
     let slice = buf.slice();
     assert_eq!(&*slice, &[1, 2, 3]);
 }
 
 #[test]
 fn test_overlong_write() {
-    use std::io::Write;
-
     let mut buf = AppendBuf::new(5);
-    assert_eq!(buf.write(&[1, 2, 3, 4, 5, 6]).unwrap(), 5);
+    assert_eq!(buf.fill(&[1, 2, 3, 4, 5, 6]), 5);
     let slice = buf.slice();
     assert_eq!(&*slice, &[1, 2, 3, 4, 5]);
 }
 
 #[test]
 fn test_slice_slicing() {
-    use std::io::Write;
-
     let data = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
     let mut buf = AppendBuf::new(10);
-    assert_eq!(buf.write(data).unwrap(), 10);
+    assert_eq!(buf.fill(data), 10);
 
     assert_eq!(&*buf.slice(), data);
     assert_eq!(&*buf.slice().slice_to(5), &data[..5]);
@@ -245,14 +251,41 @@ fn test_slice_slicing() {
 }
 
 #[test]
+fn test_many_writes() {
+    let mut buf = AppendBuf::new(100);
+
+    assert_eq!(buf.fill(&[1, 2, 3, 4]), 4);
+    assert_eq!(buf.fill(&[10, 12, 13, 14, 15]), 5);
+    assert_eq!(buf.fill(&[34, 35]), 2);
+
+    assert_eq!(&*buf.slice(), &[1, 2, 3, 4, 10, 12, 13, 14, 15, 34, 35]);
+}
+
+#[test]
+fn test_slice_then_write() {
+    let mut buf = AppendBuf::new(20);
+    let empty = buf.slice();
+    assert_eq!(&*empty, &[]);
+
+    assert_eq!(buf.fill(&[5, 6, 7, 8]), 4);
+
+    let not_empty = buf.slice();
+    assert_eq!(&*empty, &[]);
+    assert_eq!(&*not_empty, &[5, 6, 7, 8]);
+
+    assert_eq!(buf.fill(&[9, 10, 11, 12, 13]), 5);
+    assert_eq!(&*empty, &[]);
+    assert_eq!(&*not_empty, &[5, 6, 7, 8]);
+    assert_eq!(&*buf.slice(), &[5, 6, 7, 8, 9, 10, 11, 12, 13]);
+}
+
+#[test]
 #[should_panic = "the desired offset"]
 fn test_slice_from_bounds_checks() {
-    use std::io::Write;
-
     let data = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
     let mut buf = AppendBuf::new(10);
-    assert_eq!(buf.write(data).unwrap(), 10);
+    assert_eq!(buf.fill(data), 10);
 
     buf.slice().slice_from(100);
 }
@@ -260,12 +293,10 @@ fn test_slice_from_bounds_checks() {
 #[test]
 #[should_panic = "the desired length"]
 fn test_slice_to_bounds_checks() {
-    use std::io::Write;
-
     let data = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
     let mut buf = AppendBuf::new(10);
-    assert_eq!(buf.write(data).unwrap(), 10);
+    assert_eq!(buf.fill(data), 10);
 
     buf.slice().slice_to(100);
 }
