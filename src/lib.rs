@@ -18,10 +18,16 @@ pub struct AppendBuf {
     position: usize
 }
 
+unsafe impl Send for AppendBuf {}
+unsafe impl Sync for AppendBuf {}
+
 struct AllocInfo {
     refcount: AtomicUsize,
     buf: [u8]
 }
+
+unsafe impl Send for AllocInfo {}
+unsafe impl Sync for AllocInfo {}
 
 /// A read-only view into an AppendBuf.
 pub struct Slice {
@@ -29,6 +35,9 @@ pub struct Slice {
     offset: usize,
     len: usize
 }
+
+unsafe impl Send for Slice {}
+unsafe impl Sync for Slice {}
 
 impl Slice {
     /// Get a subslice starting from the passed offset.
@@ -219,6 +228,12 @@ impl Drop for AppendBuf {
     fn drop(&mut self) {
         unsafe { (*self.alloc).decrement() }
     }
+}
+
+fn _compile_test() {
+    fn _is_send_sync<T: Send + Sync>() {}
+    _is_send_sync::<AppendBuf>();
+    _is_send_sync::<Slice>();
 }
 
 #[test]
