@@ -59,7 +59,7 @@ impl Slice {
 
     /// Get a subslice of the first len elements.
     pub fn slice_to(&self, len: usize) -> Slice {
-        if self.len <= len {
+        if self.len < len {
             panic!("Sliced past the end of an appendbuf::Slice,
                    the length was {:?} and the desired length was {:?}",
                    self.len, len);
@@ -292,6 +292,20 @@ fn test_slice_then_write() {
     assert_eq!(&*empty, &[]);
     assert_eq!(&*not_empty, &[5, 6, 7, 8]);
     assert_eq!(&*buf.slice(), &[5, 6, 7, 8, 9, 10, 11, 12, 13]);
+}
+
+#[test]
+fn test_slice_bounds_edge_cases() {
+    let data = &[1, 2, 3, 4, 5, 6];
+
+    let mut buf = AppendBuf::new(data.len());
+    assert_eq!(buf.fill(data), data.len());
+
+    let slice = buf.slice().slice_to(data.len());
+    assert_eq!(&*slice, data);
+
+    let slice = buf.slice().slice_from(0);
+    assert_eq!(&*slice, data);
 }
 
 #[test]
