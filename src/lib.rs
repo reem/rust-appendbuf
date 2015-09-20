@@ -154,6 +154,18 @@ impl AppendBuf {
     }
 }
 
+impl Deref for AppendBuf {
+    type Target = [u8];
+
+    fn deref(&self) -> &[u8] {
+        &self.allocinfo().buf[..self.position]
+    }
+}
+
+impl AsRef<[u8]> for AppendBuf {
+    fn as_ref(&self) -> &[u8] { self }
+}
+
 impl io::Write for AppendBuf {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         Ok(self.fill(buf))
@@ -242,6 +254,8 @@ fn test_write_and_slice() {
     assert_eq!(buf.fill(&[1, 2, 3]), 3);
     let slice = buf.slice();
     assert_eq!(&*slice, &[1, 2, 3]);
+
+    assert_eq!(&*buf, &[1, 2, 3]);
 }
 
 #[test]
