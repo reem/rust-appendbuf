@@ -10,7 +10,7 @@ extern crate memalloc;
 
 use std::sync::atomic::{self, AtomicUsize, Ordering};
 use std::ops::Deref;
-use std::{io, mem};
+use std::{io, mem, fmt};
 
 /// An append-only, atomically reference counted buffer.
 pub struct AppendBuf {
@@ -151,6 +151,18 @@ impl AppendBuf {
 
     fn allocinfo_mut(&mut self) -> &mut AllocInfo {
         unsafe { mem::transmute(self.alloc) }
+    }
+}
+
+impl fmt::Debug for AppendBuf {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&**self, f)
+    }
+}
+
+impl fmt::Debug for Slice {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&**self, f)
     }
 }
 
