@@ -198,6 +198,18 @@ impl AsRef<[u8]> for Slice {
     fn as_ref(&self) -> &[u8] { self }
 }
 
+impl Clone for Slice {
+    fn clone(&self) -> Slice {
+        self.allocinfo().increment();
+
+        Slice {
+            alloc: self.alloc,
+            offset: self.offset,
+            len: self.len
+        }
+    }
+}
+
 impl AllocInfo {
     unsafe fn allocate(size: usize) -> *mut Self {
         let alloc = memalloc::allocate(size + std::mem::size_of::<AtomicUsize>());
