@@ -42,7 +42,7 @@ unsafe impl Sync for Slice {}
 impl Slice {
     /// Get a subslice starting from the passed offset.
     pub fn slice_from(&self, offset: usize) -> Slice {
-        if self.len < self.offset + offset {
+        if self.len < offset {
             panic!("Sliced past the end of an appendbuf::Slice,
                    the length was {:?} and the desired offset was {:?}",
                    self.len, offset);
