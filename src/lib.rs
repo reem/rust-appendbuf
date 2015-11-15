@@ -10,6 +10,7 @@ extern crate memalloc;
 
 use std::sync::atomic::{self, AtomicUsize, Ordering};
 use std::ops::Deref;
+use std::io::Read;
 use std::{io, mem, fmt};
 
 /// An append-only, atomically reference counted buffer.
@@ -143,6 +144,18 @@ impl AppendBuf {
     /// buffer returned by `get_write_buf`.
     pub unsafe fn advance(&mut self, amount: usize) {
          self.position += amount;
+    }
+
+    /// Read from the given io::Read into the AppendBuf.
+    ///
+    /// Safety note: it is possible to read uninitalized memory if the
+    /// passed io::Read incorrectly reports the number of bytes written to
+    /// buffers passed to it.
+    pub fn read_from<R: Read>(&mut self, reader: &mut R) -> io::Result<usize> {
+        reader.read(self.get_write_buf()).map(|n| {
+            unsafe { self.advance(n) };
+            n
+        })
     }
 
     fn allocinfo(&self) -> &AllocInfo {
