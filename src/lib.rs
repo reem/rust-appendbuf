@@ -96,6 +96,27 @@ impl AppendBuf {
         }
     }
 
+    /// Create an AppendBuf from an existing Vec.
+    ///
+    /// The capacity of the AppendBuf is the capacity of the Vec with space extracted
+    /// at the beginning for the reference count. The reference count occupies the space
+    /// of a usize, and the Vec must have enough space for it.
+    ///
+    /// If the Vec is too short, it is returned in the error value.
+    pub fn from_buf(vec: Vec<u8>) -> Result<Self, Vec<u8>> {
+        if vec.capacity() < mem::size_of::<AtomicUsize>() {
+            return Err(vec)
+        }
+
+        let vec_len = vec.len();
+        let alloc_info = unsafe { AllocInfo::from_buf(vec) };
+
+        Ok(AppendBuf {
+            alloc: alloc_info,
+            position: vec_len - mem::size_of::<AtomicUsize>()
+        })
+    }
+
     /// Create a new Slice of the entire AppendBuf so far.
     pub fn slice(&self) -> Slice {
         self.allocinfo().increment();
@@ -225,8 +246,25 @@ impl Clone for Slice {
 
 impl AllocInfo {
     unsafe fn allocate(size: usize) -> *mut Self {
-        let alloc = memalloc::allocate(size + std::mem::size_of::<AtomicUsize>());
-        let this = mem::transmute::<_, *mut Self>((alloc, size));
+        let alloc = memalloc::allocate(size + mem::size_of::<AtomicUsize>());
+        AllocInfo::from_raw_buf(alloc, size)
+    }
+
+    /// Creates an AllocInfo from a Vec.
+    ///
+    /// The Vec *must* have a capacity of *at least* `mem::size_of::<usize>()`.
+    unsafe fn from_buf(mut buf: Vec<u8>) -> *mut Self {
+        let refcount_size = mem::size_of::<AtomicUsize>();
+        let this = AllocInfo::from_raw_buf(buf.as_mut_ptr(), buf.capacity() - refcount_size);
+        mem::forget(buf);
+        this
+    }
+
+    /// Create an AllocInfo from a raw pointer.
+    ///
+    /// The pointer must point to an allocation of size `buf_cap + mem::size_of::<usize>()`.
+    unsafe fn from_raw_buf(buf: *mut u8, buf_cap: usize) -> *mut Self {
+        let this = mem::transmute::<_, *mut Self>((buf, buf_cap));
         (*this).refcount = AtomicUsize::new(1);
         this
     }
@@ -379,5 +417,16 @@ fn test_slice_to_bounds_checks() {
     assert_eq!(buf.fill(data), 10);
 
     buf.slice().slice_to(100);
+}
+
+#[test]
+fn test_convert_from_vec() {
+    let buf = vec![0, 0, 0, 0, 0, 0, 0, 0, // refcount
+                   1, 2, 3, 4, 5, 6, 7, 8]; // data
+    let append_buf = AppendBuf::from_buf(buf.clone()).unwrap();
+    assert_eq!(&*append_buf, &buf[8..]);
+
+    let buf = vec![0, 0, 0, 0]; // too short
+    assert_eq!(AppendBuf::from_buf(buf.clone()).unwrap_err(), buf);
 }
 
