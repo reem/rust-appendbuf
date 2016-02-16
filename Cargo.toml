@@ -9,5 +9,5 @@ readme = "README.md"
 license = "MIT"
 
 [dependencies]
-memalloc = "0"
+memalloc = "0.1"
 
