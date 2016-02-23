@@ -2,7 +2,7 @@
 
 > A Sync append-only buffer with Send views.
 
-## [Documentation](https://crates.fyi/appendbuf/0.1.6)
+## [Documentation](https://crates.fyi/crates/appendbuf/0.1.6)
 
 Provides an atomically reference counted, append-only buffer. Each buffer
 consists of a unique `AppendBuf` handle which can write new data to the buffer
